@@ -111,8 +111,8 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":44628864,"index.wasm":1648449},"focusCanvas":true,"gdextensionLibs":[]};
-const GODOT_THREADS_ENABLED = true;
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":44638320,"index.wasm":1626559},"focusCanvas":true,"gdextensionLibs":[]};
+const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
 (function () {
@@ -215,6 +215,124 @@ const engine = new Engine(GODOT_CONFIG);
 	}
 }());
 		</script>
+<script id="fg-bridge">
+(() => {
+  'use strict';
+  const BUILD_TAG = 'FG-BRIDGE-UNIFIED-2';
+  console.log('[BOOT]', BUILD_TAG);
+
+  // ——— Matikan service worker (hindari cache saat debug) ———
+  try {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations?.()
+        .then(list => list.forEach(sw => sw.unregister()))
+        .catch(()=>{});
+    }
+  } catch(e){}
+
+  // ——— Util ———
+  const LS_WALLET = 'player_wallet';
+  const SS_SKIP   = 'fg_skip_autologin';  // untuk skip autologin sekali setelah disconnect
+
+  const save = (k,v)=>{ try{ localStorage.setItem(k,v);}catch(e){} };
+  const load = (k)=>{ try{ return localStorage.getItem(k)||'';}catch(e){ return ''; } };
+
+  const getPhantom = () =>
+    (window.solana && window.solana.isPhantom) ? window.solana : null;
+
+  // Kirim alamat ke Godot; bila callback belum terpasang -> retry
+  function deliverToGodot(addr){
+    if (typeof window.godotWalletConnected === 'function'){
+      window.godotWalletConnected(addr);
+      return;
+    }
+    console.warn('[Bridge] Callback Godot belum terpasang. Menunggu...');
+    let tries = 0;
+    const t = setInterval(() => {
+      if (typeof window.godotWalletConnected === 'function'){
+        clearInterval(t);
+        window.godotWalletConnected(addr);
+      } else if (++tries > 60) { // ~6 detik
+        clearInterval(t);
+        console.warn('[Bridge] Gagal menemukan callback Godot.');
+      }
+    }, 100);
+  }
+
+  // ——— API yang dipanggil GDScript ———
+  window.getSavedWallet = () => load(LS_WALLET);
+
+  window.connectPhantom = async function () {
+    console.log('[Bridge] connectPhantom()');
+    const p = getPhantom();
+    if (!p) { alert('Phantom extension tidak ditemukan.'); return; }
+    try {
+      const { publicKey } = await p.connect(); // harus via user gesture
+      const addr = publicKey.toString();
+      console.log('[Phantom] connected:', addr);
+      save(LS_WALLET, addr);
+      deliverToGodot(addr);
+    } catch (e) {
+      console.error('[Phantom] connect error:', e);
+    }
+  };
+
+  window.disconnectPhantom = async function () {
+    const p = getPhantom();
+    try { if (p) await p.disconnect(); } catch(e){ console.warn(e); }
+    try { localStorage.removeItem(LS_WALLET); } catch(e){}
+    try { sessionStorage.setItem(SS_SKIP,'1'); } catch(e){}
+    if (typeof window.godotWalletDisconnected === 'function') {
+      window.godotWalletDisconnected();
+    }
+    console.log('[Bridge] disconnectPhantom() selesai');
+  };
+
+  // ——— Civic / Google ———
+  window.civicOpen = function () {
+    const redirect = location.origin + '/callback.html'; // pastikan file ini ada
+    const appId = 'YOUR_CIVIC_APP_ID';                   // <-- ganti App ID kamu
+    const url = 'https://auth.civic.com/login'
+      + '?appId=' + encodeURIComponent(appId)
+      + '&provider=google'
+      + '&redirect_uri=' + encodeURIComponent(redirect);
+
+    const w = window.open(url,'civic_auth','width=480,height=720,noopener,noreferrer');
+    if (!w) alert('Popup diblokir. Izinkan pop-up untuk localhost.');
+  };
+
+  // Terima hasil dari callback.html
+  window.addEventListener('message', (ev) => {
+    if (ev.origin !== location.origin) return;
+    const data = ev.data || {};
+    if (data.type !== 'civic:ok') return;
+    try { localStorage.setItem('civic_payload', JSON.stringify(data.payload)); } catch(e){}
+    if (typeof window.godotCivicAuthed === 'function') {
+      window.godotCivicAuthed(data.payload);
+    }
+  });
+
+  // ——— Autologin dipicu dari GDScript setelah callback dipasang ———
+  // Panggil dari GDScript: JavaScriptBridge.eval("window.fgAutoLoginIfAny && window.fgAutoLoginIfAny()", true)
+  window.fgAutoLoginIfAny = function(){
+    try {
+      if (sessionStorage.getItem(SS_SKIP) === '1') {
+        sessionStorage.removeItem(SS_SKIP);
+        console.log('[Bridge] Skip autologin (habis disconnect)');
+        return;
+      }
+    } catch(e){}
+    const pk = load(LS_WALLET);
+    if (pk) {
+      console.log('[Bridge] Auto-connect wallet:', pk);
+      deliverToGodot(pk);
+    } else {
+      console.log('[Bridge] Tidak ada wallet tersimpan.');
+    }
+  };
+})();
+</script>
+</script>
 	</body>
 </html>
 
