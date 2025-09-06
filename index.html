@@ -290,8 +290,8 @@ const engine = new Engine(GODOT_CONFIG);
 
   // ——— Civic / Google ———
   window.civicOpen = function () {
-    const redirect = location.origin + '/callback.html'; // pastikan file ini ada
-    const appId = 'YOUR_CIVIC_APP_ID';                   // <-- ganti App ID kamu
+    const redirect = location.origin + '/callback.html'; 
+    const appId = '386a8b2a-ab34-4403-882a-66954b745bff';           
     const url = 'https://auth.civic.com/login'
       + '?appId=' + encodeURIComponent(appId)
       + '&provider=google'
@@ -301,7 +301,6 @@ const engine = new Engine(GODOT_CONFIG);
     if (!w) alert('Popup diblokir. Izinkan pop-up untuk localhost.');
   };
 
-  // Terima hasil dari callback.html
   window.addEventListener('message', (ev) => {
     if (ev.origin !== location.origin) return;
     const data = ev.data || {};
@@ -312,8 +311,6 @@ const engine = new Engine(GODOT_CONFIG);
     }
   });
 
-  // ——— Autologin dipicu dari GDScript setelah callback dipasang ———
-  // Panggil dari GDScript: JavaScriptBridge.eval("window.fgAutoLoginIfAny && window.fgAutoLoginIfAny()", true)
   window.fgAutoLoginIfAny = function(){
     try {
       if (sessionStorage.getItem(SS_SKIP) === '1') {
